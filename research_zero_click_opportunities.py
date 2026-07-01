@@ -13,6 +13,7 @@ Usage:
 
 import argparse
 import os
+import time
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
@@ -20,6 +21,20 @@ from dotenv import load_dotenv
 from data_sources.modules.google_search_console import GoogleSearchConsole
 
 MAX_ROWS_PER_PAGE = 25000
+MAX_RETRIES = 5
+
+
+def _query_with_retries(gsc: GoogleSearchConsole, request: dict) -> dict:
+    """Run a single searchanalytics query, retrying on transient timeouts/network errors."""
+    for attempt in range(MAX_RETRIES):
+        try:
+            return gsc.service.searchanalytics().query(
+                siteUrl=gsc.site_url, body=request
+            ).execute(num_retries=3)
+        except Exception:
+            if attempt == MAX_RETRIES - 1:
+                raise
+            time.sleep(2 ** attempt)
 
 
 def fetch_all_query_page_rows(gsc: GoogleSearchConsole, days: int) -> list:
@@ -37,11 +52,10 @@ def fetch_all_query_page_rows(gsc: GoogleSearchConsole, days: int) -> list:
             'rowLimit': MAX_ROWS_PER_PAGE,
             'startRow': start_row,
         }
-        response = gsc.service.searchanalytics().query(
-            siteUrl=gsc.site_url, body=request
-        ).execute()
+        response = _query_with_retries(gsc, request)
         rows = response.get('rows', [])
         all_rows.extend(rows)
+        print(f'  fetched {len(all_rows):,} rows so far (startRow={start_row})...')
         if len(rows) < MAX_ROWS_PER_PAGE:
             break
         start_row += MAX_ROWS_PER_PAGE
