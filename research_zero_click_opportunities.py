@@ -12,6 +12,7 @@ Usage:
 """
 
 import argparse
+import csv
 import os
 import time
 from datetime import datetime, timedelta
@@ -156,11 +157,37 @@ def write_report(opportunities: list, days: int, min_impressions: int, limit: in
     return report_path
 
 
+def write_csv(opportunities: list) -> str:
+    today = datetime.now().strftime('%Y-%m-%d')
+    os.makedirs('research', exist_ok=True)
+    csv_path = f'research/gsc-zero-click-opportunities-{today}.csv'
+
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            'query', 'impressions', 'avg_position', 'intent_category',
+            'intent_score', 'ranking_page', 'other_pages', 'action',
+        ])
+        for o in opportunities:
+            writer.writerow([
+                o['query'],
+                o['impressions'],
+                o['avg_position'],
+                o['intent_category'],
+                o['intent_score'],
+                o['top_page'],
+                '; '.join(o['other_pages']),
+                o['action'],
+            ])
+
+    return csv_path
+
+
 def main():
     parser = argparse.ArgumentParser(description='Find GSC queries with impressions but zero clicks')
     parser.add_argument('--days', type=int, default=499, help='Days of history to analyze (GSC API max ~16 months)')
     parser.add_argument('--min-impressions', type=int, default=50, help='Minimum impressions to include a query')
-    parser.add_argument('--limit', type=int, default=200, help='Max rows to include in the report')
+    parser.add_argument('--limit', type=int, default=200, help='Max rows to include in the markdown report')
     args = parser.parse_args()
 
     load_dotenv('data_sources/config/.env')
@@ -171,7 +198,10 @@ def main():
     print(f'Found {len(opportunities)} zero-click queries with {args.min_impressions}+ impressions.')
 
     report_path = write_report(opportunities, args.days, args.min_impressions, args.limit)
-    print(f'Report saved to: {report_path}')
+    print(f'Markdown summary (top {args.limit}) saved to: {report_path}')
+
+    csv_path = write_csv(opportunities)
+    print(f'Full dataset ({len(opportunities)} rows) saved to: {csv_path}')
 
 
 if __name__ == '__main__':
